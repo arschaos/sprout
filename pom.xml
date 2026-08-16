@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.arschaos</groupId>
+    <artifactId>sprout-parent</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>Sprout :: Parent</name>
+    <description>Near-instant architecture visualization for Java and Spring Boot projects</description>
+    <url>https://github.com/arschaos/sprout</url>
+
+    <modules>
+        <module>sprout-core</module>
+        <module>sprout-maven-plugin</module>
+        <module>sprout-web</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.release>17</maven.compiler.release>
+    </properties>
+</project>
