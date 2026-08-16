@@ -1,0 +1,41 @@
+name: Java CI with Maven
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-tests:
+    name: Build & Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            jdk: 17
+          - os: ubuntu-latest
+            jdk: 21
+          - os: windows-latest
+            jdk: 17
+          - os: windows-latest
+            jdk: 21
+
+    timeout-minutes: 8            
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up JDK ${{ matrix.jdk }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: '${{ matrix.jdk }}'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn clean verify
