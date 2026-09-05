@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprout Architecture Visualizer - /*{{PROJECT_NAME}}*/</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <header>
+        <div class="logo-group">
+            <div class="logo-icon">🌱</div>
+            <div>
+                <div class="title">Sprout Architecture Visualizer</div>
+                <div class="subtitle" id="projectSubtitle">/*{{PROJECT_NAME}}*/ &bull; Generated /*{{TIMESTAMP}}*/</div>
+            </div>
+        </div>
+        <div class="metrics-bar" id="metricsBar">
+            <!-- Populated dynamically via JS -->
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="canvas-container">
+            <canvas id="graphCanvas"></canvas>
+            <div class="controls-overlay">
+                <input type="text" id="searchInput" class="search-box" placeholder="Search components...">
+                <div class="filters-group" id="filtersGroup"></div>
+            </div>
+            <div class="legend">
+                <div class="legend-item"><span class="legend-dot" style="background: var(--color-controller)"></span> Controller</div>
+                <div class="legend-item"><span class="legend-dot" style="background: var(--color-service)"></span> Service</div>
+                <div class="legend-item"><span class="legend-dot" style="background: var(--color-repo)"></span> Repository</div>
+                <div class="legend-item"><span class="legend-dot" style="background: var(--color-config)"></span> Config</div>
+                <div class="legend-item"><span class="legend-dot" style="background: var(--color-interface)"></span> Interface</div>
+                <div class="legend-item"><span class="legend-dot" style="background: var(--color-model)"></span> Model</div>
+            </div>
+        </div>
+        <div class="sidebar" id="detailsSidebar">
+            <div class="sidebar-section">
+                <h3 id="selectedName">Select a Component</h3>
+                <div id="selectedFqcn" style="font-size: 11px; color: #8b949e;">Click any node in the graph to inspect its architectural details.</div>
+            </div>
+            <div class="sidebar-section" id="selectedMeta" style="display: none;">
+                <div id="selectedTags"></div>
+                <div class="list-item" id="selectedLoc"></div>
+                <div class="list-item" id="selectedFile"></div>
+            </div>
+            <div class="sidebar-section" id="selectedInjections" style="display: none;">
+                <h3>Injected Dependencies</h3>
+                <div id="injectionsList"></div>
+            </div>
+            <div class="sidebar-section" id="selectedEdges" style="display: none;">
+                <h3>Connections</h3>
+                <div id="connectionsList"></div>
+            </div>
+            <div class="sidebar-section" id="selectedMethods" style="display: none;">
+                <h3>Declared Methods</h3>
+                <div id="methodsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.SPROUT_DATA = /*{{SPROUT_DATA}}*/null;
+    </script>
+    <script src="dashboard.js"></script>
+</body>
+</html>
