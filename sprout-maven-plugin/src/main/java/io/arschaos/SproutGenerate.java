@@ -111,7 +111,6 @@ public class SproutGenerate extends AbstractMojo {
                 int serverPort = engine.resolvePort(targetProjectDir, port);
                 SproutWebServer webServer = new SproutWebServer();
                 int actualPort = webServer.start(serverPort, graph);
-                getLog().info("Sprout Web Visualizer is live at: http://localhost:" + actualPort + "/");
 
                 SproutWebServer.openBrowser(actualPort);
 

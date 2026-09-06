@@ -25,7 +25,7 @@ public class SproutWebServer {
         }
 
         ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-        
+
         try {
             Thread.currentThread().setContextClassLoader(SproutWebServer.class.getClassLoader());
             JavalinLogger.startupInfo = false;
@@ -68,6 +68,7 @@ public class SproutWebServer {
             }
 
             logger.info("Sprout Web Visualizer started at http://localhost:{}/", this.port);
+            
             return this.port;
         } catch (Exception e) {
             logger.error("Failed to start Sprout web visualizer on port {}: {}", port, e.getMessage(), e);
