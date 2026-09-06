@@ -11,6 +11,7 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.MavenProject;
 
 import java.io.File;
+import java.util.List;
 
 /**
  * Sprout Maven Mojo that scans the target Java codebase, extracts architectural relationships
@@ -21,17 +22,17 @@ import java.io.File;
 public class SproutGenerate extends AbstractMojo {
 
     @Parameter(defaultValue = "${project}", readonly = true)
-    private MavenProject project;
+    MavenProject project;
 
     @Parameter(defaultValue = "${project.basedir}", readonly = true)
-    private File baseDir;
+    File baseDir;
 
     /**
      * Control flag to launch the embedded Javalin server and automatically open the interactive 
      * dashboard in the user's default browser after scanning.
      */
     @Parameter(defaultValue = "true", property = "sprout.launchApp")
-    private boolean launchApp;
+    boolean launchApp = true;
 
     /**
      * Port configuration option for the visualizer web server. If not specified, 
@@ -39,13 +40,25 @@ public class SproutGenerate extends AbstractMojo {
      * or defaults to {@code 8383}.
      */
     @Parameter(property = "sprout.port")
-    private Integer port;
+    Integer port;
 
     /**
      * Directory where the generated architecture artifacts (JSON and HTML dashboard) are stored.
      */
     @Parameter(defaultValue = "${project.build.directory}/sprout", property = "sprout.outputDir")
-    private File outputDir;
+    File outputDir;
+
+    /**
+     * Directory where generated architecture diagrams, reports, and visualization assets are written.
+     */
+    @Parameter(defaultValue = "${project.build.directory}/sprout", property = "sprout.outputDirectory")
+    File outputDirectory;
+
+    /**
+     * List of output diagram formats to generate. Supported formats include HTML, MERMAID (or md), and JSON. Defaults to HTML, MERMAID, and JSON.
+     */
+    @Parameter(property = "sprout.formats")
+    List<String> formats;
 
     /** Visible for testing. */
     File testBaseDir;
@@ -62,8 +75,8 @@ public class SproutGenerate extends AbstractMojo {
         getLog().info("Sprout is generating architecture diagrams...");
 
         File targetProjectDir = testBaseDir != null ? testBaseDir :
-                (baseDir != null ? baseDir :
-                (project != null && project.getBasedir() != null ? project.getBasedir() : new File(".")));
+            (baseDir != null ? baseDir :
+            (project != null && project.getBasedir() != null ? project.getBasedir() : new File(".")));
 
         if (!targetProjectDir.exists()) {
             throw new MojoExecutionException("Target project directory does not exist: " + targetProjectDir.getAbsolutePath());
@@ -76,7 +89,8 @@ public class SproutGenerate extends AbstractMojo {
             ArchitectureGraph graph = engine.analyze(targetProjectDir);
 
             // 2. Prepare output directory
-            File outDirectory = outputDir != null ? outputDir : new File(targetProjectDir, "target/sprout");
+            File outDirectory = outputDirectory != null ? outputDirectory :
+                (outputDir != null ? outputDir : new File(targetProjectDir, "target/sprout"));
             if (!outDirectory.exists()) {
                 outDirectory.mkdirs();
             }
@@ -88,22 +102,18 @@ public class SproutGenerate extends AbstractMojo {
             File htmlFile = new File(outDirectory, "index.html");
             engine.exportHtml(graph, htmlFile);
 
-            // 4. Log summary
-            String summary = engine.formatSummary(graph);
-            getLog().info(summary);
-
             getLog().info("Architecture artifacts generated:");
             getLog().info("  JSON Graph : " + jsonFile.getAbsolutePath());
             getLog().info("  HTML Report: " + htmlFile.getAbsolutePath());
 
-            // 5. Optional interactive visualizer server
+            // 4. Optional interactive visualizer server
             if (launchApp) {
                 int serverPort = engine.resolvePort(targetProjectDir, port);
                 SproutWebServer webServer = new SproutWebServer();
-                webServer.start(serverPort, graph);
-                getLog().info("Sprout Web Visualizer is live at: http://localhost:" + serverPort + "/");
+                int actualPort = webServer.start(serverPort, graph);
+                getLog().info("Sprout Web Visualizer is live at: http://localhost:" + actualPort + "/");
 
-                SproutWebServer.openBrowser(serverPort);
+                SproutWebServer.openBrowser(actualPort);
 
                 if (System.console() != null) {
                     getLog().info("Press [ENTER] in terminal to shut down visualizer...");
@@ -117,7 +127,6 @@ public class SproutGenerate extends AbstractMojo {
                 } else if (Boolean.getBoolean("sprout.keepAlive")) {
                     getLog().info("Visualizer server running in background daemon mode.");
                 } else {
-                    // Headless / non-interactive / CI execution
                     webServer.stop();
                 }
             }
@@ -125,21 +134,5 @@ public class SproutGenerate extends AbstractMojo {
         } catch (Exception e) {
             throw new MojoExecutionException("Failed during Sprout architecture generation: " + e.getMessage(), e);
         }
-    }
-
-    public void setTestBaseDir(File testBaseDir) {
-        this.testBaseDir = testBaseDir;
-    }
-
-    public void setLaunchApp(boolean launchApp) {
-        this.launchApp = launchApp;
-    }
-
-    public void setPort(Integer port) {
-        this.port = port;
-    }
-
-    public void setOutputDir(File outputDir) {
-        this.outputDir = outputDir;
     }
 }

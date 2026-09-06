@@ -1,375 +1,638 @@
-(function () {
-    const COLOR_MAP = {
-        'CONTROLLER': '#3fb950',
-        'SERVICE': '#58a6ff',
-        'REPOSITORY': '#d29922',
-        'CONFIGURATION': '#bc8cff',
-        'COMPONENT': '#20b2aa',
-        'MODEL': '#79c0ff',
-        'UTILITY': '#ff7b72',
-        'INTERFACE': '#a371f7',
-        'RECORD': '#f0883e',
-        'ENUM': '#e3b341',
-        'CLASS': '#8b949e'
-    };
+/**
+ * Sprout Architecture Visualizer - Interactive Graph
+ */
+let cy = null;
+let graphData = null;
 
-    function initDashboard(graphData) {
-        if (!graphData || !graphData.nodes) {
-            console.error("No graph data available to render");
-            return;
-        }
+const COLOR_MAP = {
+    'CONTROLLER':    { bg: '#1e3a8a', border: '#3b82f6', text: '#93c5fd' },
+    'SERVICE':       { bg: '#064e3b', border: '#10b981', text: '#6ee7b7' },
+    'REPOSITORY':    { bg: '#78350f', border: '#f59e0b', text: '#fcd34d' },
+    'CONFIGURATION': { bg: '#831843', border: '#ec4899', text: '#f472b6' },
+    'COMPONENT':     { bg: '#134e4a', border: '#14b8a6', text: '#5eead4' },
+    'MODEL':         { bg: '#4c1d95', border: '#8b5cf6', text: '#c4b5fd' },
+    'UTILITY':       { bg: '#7f1d1d', border: '#ef4444', text: '#fca5a5' },
+    'INTERFACE':     { bg: '#3b0764', border: '#a371f7', text: '#d8b4fe' },
+    'RECORD':        { bg: '#7c2d12', border: '#f97316', text: '#fdba74' },
+    'ENUM':          { bg: '#713f12', border: '#eab308', text: '#fde047' },
+    'CLASS':         { bg: '#1e293b', border: '#64748b', text: '#cbd5e1' }
+};
 
-        // Update header metrics
-        const m = graphData.metrics || {};
-        const titleSubtitle = document.getElementById('projectSubtitle');
-        if (titleSubtitle) {
-            titleSubtitle.textContent = (graphData.projectName || 'Project') + ' • Generated ' + (graphData.timestamp || '');
-        }
+let activeTypes = new Set();
 
-        const metricsBar = document.getElementById('metricsBar');
-        if (metricsBar) {
-            metricsBar.innerHTML = `
-                <div class="metric-badge">Classes: <strong>${m.totalClasses || 0}</strong></div>
-                <div class="metric-badge">Interfaces: <strong>${m.totalInterfaces || 0}</strong></div>
-                <div class="metric-badge">Lines of Code: <strong>${m.totalLinesOfCode || 0}</strong></div>
-                <div class="metric-badge">Packages: <strong>${m.packageCount || 0}</strong></div>
-                <div class="metric-badge">Relationships: <strong>${(graphData.edges || []).length}</strong></div>
-            `;
-        }
+function initDashboard(data) {
+    if (!data || !data.nodes) {
+        console.error("No graph data available to render");
+        return;
+    }
+    graphData = data;
 
-        const canvas = document.getElementById('graphCanvas');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-
-        let nodes = graphData.nodes.map((n, i) => ({
-            ...n,
-            x: 0,
-            y: 0,
-            vx: 0,
-            vy: 0,
-            radius: n.type === 'CONTROLLER' ? 24 : (n.type === 'SERVICE' ? 22 : 18)
-        }));
-
-        const nodeMap = new Map();
-        nodes.forEach(n => nodeMap.set(n.id, n));
-
-        const edges = (graphData.edges || []).map(e => ({
-            ...e,
-            sourceNode: nodeMap.get(e.source),
-            targetNode: nodeMap.get(e.target)
-        })).filter(e => e.sourceNode && e.targetNode);
-
-        let activeFilters = new Set(Object.keys(m.typeCounts || {}));
-        let searchQuery = '';
-        let selectedNode = null;
-        let hoveredNode = null;
-        let transform = { x: 0, y: 0, k: 1 };
-        let isDragging = false;
-        let dragStart = { x: 0, y: 0 };
-        let draggedNode = null;
-
-        function resizeCanvas() {
-            canvas.width = canvas.parentElement.clientWidth;
-            canvas.height = canvas.parentElement.clientHeight;
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-
-        // Layer-based positioning
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        nodes.forEach((n, i) => {
-            let layerY = cy;
-            if (n.type === 'CONTROLLER') layerY = cy - 200;
-            else if (n.type === 'SERVICE') layerY = cy - 60;
-            else if (n.type === 'INTERFACE') layerY = cy + 60;
-            else if (n.type === 'CONFIGURATION') layerY = cy - 140;
-            else if (n.type === 'REPOSITORY') layerY = cy + 160;
-            else layerY = cy + 120 + (i % 3) * 60;
-
-            const spreadX = ((i % 6) - 2.5) * 160;
-            n.x = cx + spreadX + (Math.random() - 0.5) * 40;
-            n.y = layerY + (Math.random() - 0.5) * 30;
-        });
-
-        // Setup filter buttons
-        const filtersContainer = document.getElementById('filtersGroup');
-        if (filtersContainer) {
-            filtersContainer.innerHTML = '';
-            Object.keys(m.typeCounts || {}).forEach(t => {
-                const btn = document.createElement('button');
-                btn.className = 'filter-btn active';
-                btn.textContent = t + ' (' + m.typeCounts[t] + ')';
-                btn.addEventListener('click', () => {
-                    if (activeFilters.has(t)) {
-                        activeFilters.delete(t);
-                        btn.classList.remove('active');
-                    } else {
-                        activeFilters.add(t);
-                        btn.classList.add('active');
-                    }
-                });
-                filtersContainer.appendChild(btn);
-            });
-        }
-
-        const searchInput = document.getElementById('searchInput');
-        if (searchInput) {
-            searchInput.addEventListener('input', e => {
-                searchQuery = e.target.value.toLowerCase().trim();
-            });
-        }
-
-        // Physics simulation
-        function simulate() {
-            for (let i = 0; i < nodes.length; i++) {
-                for (let j = i + 1; j < nodes.length; j++) {
-                    const dx = nodes[j].x - nodes[i].x;
-                    const dy = nodes[j].y - nodes[i].y;
-                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    if (dist < 180) {
-                        const force = (180 - dist) / dist * 0.05;
-                        nodes[i].vx -= dx * force;
-                        nodes[i].vy -= dy * force;
-                        nodes[j].vx += dx * force;
-                        nodes[j].vy += dy * force;
-                    }
-                }
-            }
-            edges.forEach(e => {
-                const dx = e.targetNode.x - e.sourceNode.x;
-                const dy = e.targetNode.y - e.sourceNode.y;
-                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                const targetDist = 140;
-                const force = (dist - targetDist) * 0.003;
-                e.sourceNode.vx += dx * force;
-                e.sourceNode.vy += dy * force;
-                e.targetNode.vx -= dx * force;
-                e.targetNode.vy -= dy * force;
-            });
-            nodes.forEach(n => {
-                if (n !== draggedNode) {
-                    n.x += n.vx;
-                    n.y += n.vy;
-                    n.vx *= 0.85;
-                    n.vy *= 0.85;
-                }
-            });
-        }
-
-        function draw() {
-            simulate();
-            ctx.save();
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.translate(transform.x, transform.y);
-            ctx.scale(transform.k, transform.k);
-
-            // Draw edges
-            edges.forEach(e => {
-                if (!activeFilters.has(e.sourceNode.type) || !activeFilters.has(e.targetNode.type)) return;
-                const isHighlighted = selectedNode && (e.sourceNode === selectedNode || e.targetNode === selectedNode);
-                ctx.beginPath();
-                ctx.moveTo(e.sourceNode.x, e.sourceNode.y);
-                ctx.lineTo(e.targetNode.x, e.targetNode.y);
-                ctx.strokeStyle = isHighlighted ? '#ffffff' : (e.type === 'INJECTS' ? '#3fb95088' : (e.type === 'IMPLEMENTS' ? '#a371f788' : '#30363d88'));
-                ctx.lineWidth = isHighlighted ? 2.5 : 1.2;
-                if (e.type === 'IMPLEMENTS') ctx.setLineDash([4, 4]);
-                else ctx.setLineDash([]);
-                ctx.stroke();
-            });
-            ctx.setLineDash([]);
-
-            // Draw nodes
-            nodes.forEach(n => {
-                if (!activeFilters.has(n.type)) return;
-                const matchesSearch = !searchQuery || n.name.toLowerCase().includes(searchQuery) || n.packageName.toLowerCase().includes(searchQuery);
-                const isSelected = n === selectedNode;
-                const isHovered = n === hoveredNode;
-                const color = COLOR_MAP[n.type] || '#8b949e';
-
-                ctx.beginPath();
-                ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-                ctx.fillStyle = matchesSearch ? color : '#21262d';
-                ctx.fill();
-                ctx.lineWidth = isSelected ? 3 : (isHovered ? 2 : 1);
-                ctx.strokeStyle = isSelected ? '#ffffff' : '#161b22';
-                ctx.stroke();
-
-                // Text label
-                ctx.fillStyle = isSelected ? '#ffffff' : '#c9d1d9';
-                ctx.font = (isSelected ? 'bold ' : '') + '12px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(n.name, n.x, n.y + n.radius + 14);
-            });
-
-            ctx.restore();
-            requestAnimationFrame(draw);
-        }
-
-        function findNodeAt(mx, my) {
-            const x = (mx - transform.x) / transform.k;
-            const y = (my - transform.y) / transform.k;
-            for (let i = nodes.length - 1; i >= 0; i--) {
-                const n = nodes[i];
-                if (!activeFilters.has(n.type)) continue;
-                const dist = Math.hypot(n.x - x, n.y - y);
-                if (dist <= n.radius + 4) return n;
-            }
-            return null;
-        }
-
-        canvas.addEventListener('mousedown', e => {
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-            const clickedNode = findNodeAt(mx, my);
-            if (clickedNode) {
-                draggedNode = clickedNode;
-                selectNode(clickedNode);
-            } else {
-                isDragging = true;
-                dragStart = { x: mx - transform.x, y: my - transform.y };
-            }
-        });
-
-        canvas.addEventListener('mousemove', e => {
-            const rect = canvas.getBoundingClientRect();
-            const mx = e.clientX - rect.left;
-            const my = e.clientY - rect.top;
-            if (draggedNode) {
-                draggedNode.x = (mx - transform.x) / transform.k;
-                draggedNode.y = (my - transform.y) / transform.k;
-            } else if (isDragging) {
-                transform.x = mx - dragStart.x;
-                transform.y = my - dragStart.y;
-            } else {
-                hoveredNode = findNodeAt(mx, my);
-                canvas.style.cursor = hoveredNode ? 'pointer' : 'default';
-            }
-        });
-
-        window.addEventListener('mouseup', () => {
-            isDragging = false;
-            draggedNode = null;
-        });
-
-        canvas.addEventListener('wheel', e => {
-            e.preventDefault();
-            const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-            transform.k = Math.max(0.2, Math.min(3, transform.k * zoomFactor));
-        });
-
-        function selectNode(n) {
-            selectedNode = n;
-            const nameEl = document.getElementById('selectedName');
-            const fqcnEl = document.getElementById('selectedFqcn');
-            const metaEl = document.getElementById('selectedMeta');
-            const locEl = document.getElementById('selectedLoc');
-            const fileEl = document.getElementById('selectedFile');
-            const tagsContainer = document.getElementById('selectedTags');
-
-            if (nameEl) nameEl.textContent = n.name;
-            if (fqcnEl) fqcnEl.textContent = n.id;
-            if (metaEl) metaEl.style.display = 'block';
-            if (locEl) locEl.innerHTML = '<strong>Lines of Code:</strong> ' + n.linesOfCode;
-            if (fileEl) fileEl.innerHTML = '<strong>File:</strong> ' + (n.sourceFile || 'N/A');
-
-            if (tagsContainer) {
-                tagsContainer.innerHTML = '';
-                const typeTag = document.createElement('span');
-                typeTag.className = 'tag';
-                typeTag.style.background = COLOR_MAP[n.type] || '#8b949e';
-                typeTag.style.color = 'black';
-                typeTag.textContent = n.type;
-                tagsContainer.appendChild(typeTag);
-
-                (n.annotations || []).forEach(a => {
-                    const at = document.createElement('span');
-                    at.className = 'tag';
-                    at.style.background = '#21262d';
-                    at.style.color = '#58a6ff';
-                    at.textContent = '@' + a;
-                    tagsContainer.appendChild(at);
-                });
-            }
-
-            // Injections & Fields
-            const injSec = document.getElementById('selectedInjections');
-            const injDiv = document.getElementById('injectionsList');
-            if (injDiv && injSec) {
-                injDiv.innerHTML = '';
-                if (n.fields && n.fields.length > 0) {
-                    injSec.style.display = 'block';
-                    n.fields.forEach(f => {
-                        const d = document.createElement('div');
-                        d.className = 'list-item';
-                        d.textContent = (f.final ? 'final ' : '') + f.type + ' ' + f.name;
-                        injDiv.appendChild(d);
-                    });
-                } else {
-                    injSec.style.display = 'none';
-                }
-            }
-
-            // Connections
-            const connSec = document.getElementById('selectedEdges');
-            const connDiv = document.getElementById('connectionsList');
-            if (connDiv && connSec) {
-                connDiv.innerHTML = '';
-                const connectedEdges = edges.filter(e => e.source === n.id || e.target === n.id);
-                if (connectedEdges.length > 0) {
-                    connSec.style.display = 'block';
-                    connectedEdges.forEach(e => {
-                        const isOutgoing = e.source === n.id;
-                        const other = isOutgoing ? e.targetNode.name : e.sourceNode.name;
-                        const d = document.createElement('div');
-                        d.className = 'list-item';
-                        d.innerHTML = (isOutgoing ? '&#8594; ' : '&#8592; ') + '<strong>' + e.type + '</strong>: ' + other + ' <span style="color:#8b949e">(' + (e.description || '') + ')</span>';
-                        connDiv.appendChild(d);
-                    });
-                } else {
-                    connSec.style.display = 'none';
-                }
-            }
-
-            // Methods
-            const methSec = document.getElementById('selectedMethods');
-            const methDiv = document.getElementById('methodsList');
-            if (methDiv && methSec) {
-                methDiv.innerHTML = '';
-                if (n.methods && n.methods.length > 0) {
-                    methSec.style.display = 'block';
-                    n.methods.forEach(m => {
-                        const d = document.createElement('div');
-                        d.className = 'list-item';
-                        d.textContent = m.returnType + ' ' + m.name + '(' + (m.parameterTypes || []).join(', ') + ')';
-                        methDiv.appendChild(d);
-                    });
-                } else {
-                    methSec.style.display = 'none';
-                }
-            }
-        }
-
-        draw();
+    const titleSubtitle = document.getElementById('projectSubtitle');
+    if (titleSubtitle) {
+        titleSubtitle.textContent = (data.projectName || 'Project') + ' • Generated ' + (data.timestamp || '');
     }
 
-    // Auto-initialize when DOM is ready
-    function start() {
-        if (window.SPROUT_DATA) {
-            initDashboard(window.SPROUT_DATA);
+    const m = data.metrics || {};
+    const classesEl = document.getElementById('metric-classes');
+    const locEl = document.getElementById('metric-loc');
+    const nodeCountEl = document.getElementById('node-count');
+    const edgeCountEl = document.getElementById('edge-count');
+    if (classesEl) classesEl.innerText = `Classes: ${m.totalClasses || 0}`;
+    if (locEl) locEl.innerText = `LOC: ${m.totalLinesOfCode || 0}`;
+    if (nodeCountEl) nodeCountEl.innerText = `Nodes: ${(data.nodes || []).length}`;
+    if (edgeCountEl) edgeCountEl.innerText = `Edges: ${(data.edges || []).length}`;
+
+    renderFilters(data);
+    renderLegendComponents(data);
+    renderCytoscape(data);
+}
+
+function renderFilters(data) {
+    const container = document.getElementById('filtersGroup');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const counts = {};
+    (data.nodes || []).forEach(n => {
+        const t = n.type || 'CLASS';
+        counts[t] = (counts[t] || 0) + 1;
+    });
+
+    Object.keys(counts).forEach(type => {
+        activeTypes.add(type);
+        const color = (COLOR_MAP[type] || COLOR_MAP.CLASS).border;
+        const chip = document.createElement('div');
+        chip.className = 'filter-chip active';
+        chip.innerHTML = `<span class="color-dot" style="background:${color};"></span> ${type} (${counts[type]})`;
+        chip.onclick = () => toggleTypeFilter(type, chip);
+        container.appendChild(chip);
+    });
+}
+
+function renderCytoscape(data) {
+    const container = document.getElementById('cy');
+    if (!container) return;
+
+    if (typeof cytoscape === 'undefined') {
+        container.innerHTML = '<div style="color:#ef4444; padding:30px; font-size:14px;">Error: Cytoscape.js could not be loaded. Please ensure internet access to CDNs is available.</div>';
+        return;
+    }
+
+    const elements = [];
+    const nodeIds = new Set();
+
+    // 1. Build package hierarchy compound nodes so classes visually group by package
+    const packageSet = new Set();
+    (data.nodes || []).forEach(n => {
+        if (n.packageName && n.packageName.trim().length > 0) {
+            packageSet.add(n.packageName);
+        }
+    });
+
+    // Collect all ancestor package paths (e.g., "com", "com.eclark", "com.eclark.task_aggregator_api")
+    const allAncestors = new Set();
+    packageSet.forEach(pkg => {
+        const parts = pkg.split('.');
+        let curr = '';
+        for (let i = 0; i < parts.length; i++) {
+            curr = curr ? curr + '.' + parts[i] : parts[i];
+            allAncestors.add(curr);
+        }
+    });
+
+    // Add all package compound nodes to elements
+    allAncestors.forEach(pkg => {
+        nodeIds.add(pkg);
+        const parts = pkg.split('.');
+        const parent = pkg.includes('.') ? pkg.substring(0, pkg.lastIndexOf('.')) : undefined;
+        elements.push({
+            group: 'nodes',
+            data: {
+                id: pkg,
+                label: parts[parts.length - 1],
+                type: 'PACKAGE',
+                parent: parent
+            },
+            classes: 'package-node'
+        });
+    });
+
+    // 2. Build component nodes
+    (data.nodes || []).forEach(n => {
+        const id = n.id;
+        if (!id || nodeIds.has(id)) return;
+        nodeIds.add(id);
+
+        const type = n.type || 'CLASS';
+        elements.push({
+            group: 'nodes',
+            data: {
+                id: id,
+                label: n.name || id,
+                type: type,
+                packageName: n.packageName,
+                parent: (n.packageName && n.packageName.trim().length > 0) ? n.packageName : undefined,
+                methods: n.methods || [],
+                fields: n.fields || [],
+                annotations: n.annotations || [],
+                linesOfCode: n.linesOfCode,
+                sourceFile: n.sourceFile
+            },
+            classes: `node-${type.toLowerCase()}`
+        });
+    });
+
+    // 3. Sanitize parent links (prevent Cytoscape from throwing on a dangling parent)
+    elements.forEach(el => {
+        if (el.group === 'nodes' && el.data.parent && !nodeIds.has(el.data.parent)) {
+            el.data.parent = undefined;
+        }
+    });
+
+    // 4. Build edges (only where both endpoints made it into the graph)
+    (data.edges || []).forEach((e, idx) => {
+        const src = e.source;
+        const tgt = e.target;
+        if (nodeIds.has(src) && nodeIds.has(tgt)) {
+            elements.push({
+                group: 'edges',
+                data: {
+                    id: `e_${idx}`,
+                    source: src,
+                    target: tgt,
+                    type: e.type,
+                    description: e.description || ''
+                },
+                classes: `edge-${(e.type || 'uses').toLowerCase()}`
+            });
+        }
+    });
+
+    const nodeStyles = Object.keys(COLOR_MAP).map(type => ({
+        selector: `.node-${type.toLowerCase()}`,
+        style: {
+            'background-color': COLOR_MAP[type].bg,
+            'border-color': COLOR_MAP[type].border,
+            'color': COLOR_MAP[type].text
+        }
+    }));
+
+    try {
+        cy = cytoscape({
+            container: container,
+            elements: elements,
+            minZoom: 0.05,
+            maxZoom: 4,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'label': 'data(label)',
+                        'color': '#f3f4f6',
+                        'font-size': '11px',
+                        'font-family': 'Inter, sans-serif',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'background-color': '#1f2937',
+                        'border-width': 1.5,
+                        'border-color': '#4b5563',
+                        'shape': 'round-rectangle',
+                        'width': 'label',
+                        'padding': '6px'
+                    }
+                },
+                {
+                    selector: ':parent',
+                    style: {
+                        'background-color': '#0f172a',
+                        'background-opacity': 0.35,
+                        'border-color': '#334155',
+                        'border-style': 'dashed',
+                        'border-width': 1.5,
+                        'font-size': '11px',
+                        'font-weight': 'bold',
+                        'text-valign': 'top',
+                        'text-halign': 'center',
+                        'color': '#64748b',
+                        'padding': '8px'
+                    }
+                },
+                ...nodeStyles,
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 1.5,
+                        'line-color': '#64748b',
+                        'target-arrow-color': '#64748b',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        'arrow-scale': 0.85,
+                        'opacity': 0.8
+                    }
+                },
+                {
+                    selector: '.edge-injects',
+                    style: { 'line-color': '#6366f1', 'target-arrow-color': '#6366f1', 'line-style': 'solid', 'width': 2, 'opacity': 0.95 }
+                },
+                {
+                    selector: '.edge-extends',
+                    style: { 'line-color': '#10b981', 'target-arrow-color': '#10b981', 'line-style': 'solid', 'target-arrow-shape': 'triangle-backcurve', 'width': 1.5 }
+                },
+                {
+                    selector: '.edge-implements',
+                    style: { 'line-color': '#06b6d4', 'target-arrow-color': '#06b6d4', 'line-style': 'dashed', 'target-arrow-shape': 'triangle-backcurve', 'width': 1.5 }
+                },
+                {
+                    selector: '.edge-calls',
+                    style: { 'line-color': '#f97316', 'target-arrow-color': '#f97316', 'line-style': 'dotted', 'width': 1.5, 'opacity': 0.9 }
+                },
+                {
+                    selector: '.edge-uses',
+                    style: { 'line-color': '#64748b', 'target-arrow-color': '#64748b', 'line-style': 'solid', 'width': 1.5 }
+                },
+                {
+                    selector: 'node:selected',
+                    style: {
+                        'border-color': '#ffffff',
+                        'border-width': 3,
+                        'shadow-blur': 15,
+                        'shadow-color': '#6366f1',
+                        'shadow-opacity': 0.8
+                    }
+                }
+            ]
+        });
+
+        cy.on('tap', 'node', function (evt) {
+            const node = evt.target;
+            if (node.data('type') !== 'PACKAGE') {
+                showDetails(node.data());
+            }
+        });
+
+        cy.on('tap', 'edge', function (evt) {
+            showEdgeDetails(evt.target.data());
+        });
+
+        cy.on('tap', function (evt) {
+            if (evt.target === cy) {
+                hideDetails();
+                resetHighlight();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (cy) {
+                cy.resize();
+                cy.fit(undefined, 20);
+            }
+        });
+
+        // Give the flex container a frame to resolve its final size before laying out
+        setTimeout(() => {
+            if (cy) {
+                cy.resize();
+                runLayout();
+            }
+        }, 50);
+    } catch (e) {
+        console.error('Cytoscape initialization error:', e);
+    }
+}
+
+function runLayout() {
+    if (!cy) return;
+    try {
+        const layout = cy.layout({
+            name: 'fcose',
+            quality: 'proof',
+            randomize: true,
+            animate: true,
+            animationDuration: 450,
+            fit: true,
+            padding: 20,
+            nodeDimensionsIncludeLabels: true,
+            uniformNodeDimensions: false,
+            packComponents: true,
+            nodeRepulsion: node => 2200,
+            idealEdgeLength: edge => 45,
+            nodeSeparation: 30,
+            gravity: 0.35,
+            gravityRangeCompound: 1.5,
+            gravityCompound: 1.0,
+            gravityRange: 3.8
+        });
+        layout.on('layoutstop', () => cy.fit(undefined, 20));
+        layout.run();
+    } catch (e) {
+        console.warn('fcose layout failed or not registered, falling back to cose:', e);
+        try {
+            const fallbackLayout = cy.layout({
+                name: 'cose',
+                animate: true,
+                animationDuration: 400,
+                fit: true,
+                padding: 20,
+                randomize: true,
+                idealEdgeLength: 45,
+                nodeRepulsion: 2200,
+                nodeOverlap: 4,
+                componentSpacing: 30
+            });
+            fallbackLayout.on('layoutstop', () => cy.fit(undefined, 20));
+            fallbackLayout.run();
+        } catch (ignored) {}
+    }
+}
+
+function showDetails(data) {
+    const welcome = document.getElementById('welcome-msg');
+    const details = document.getElementById('node-details');
+    const edgeDetails = document.getElementById('edge-details');
+    if (welcome) welcome.style.display = 'none';
+    if (edgeDetails) edgeDetails.style.display = 'none';
+    if (details) details.style.display = 'block';
+
+    const typeEl = document.getElementById('detail-type');
+    const nameEl = document.getElementById('detail-name');
+    const pkgEl = document.getElementById('detail-pkg');
+
+    if (typeEl) {
+        typeEl.innerText = data.type || 'CLASS';
+        const color = (COLOR_MAP[data.type] || COLOR_MAP.CLASS).border;
+        typeEl.style.borderColor = color;
+        typeEl.style.color = color;
+    }
+    if (nameEl) nameEl.innerText = data.label || data.id;
+    if (pkgEl) pkgEl.innerText = data.id || data.packageName || '';
+
+    // Fields
+    const fieldsBox = document.getElementById('fields-box');
+    const fieldList = document.getElementById('field-list');
+    if (fieldsBox && fieldList) {
+        if (data.fields && data.fields.length > 0) {
+            fieldsBox.style.display = 'block';
+            fieldList.innerHTML = data.fields.map(f => `
+                <li>${f.final ? '<span style="color:#6ee7b7;">final</span> ' : ''}<span style="color:#9ca3af;">${f.type}</span> ${f.name}</li>
+            `).join('');
         } else {
-            // Attempt to fetch from REST endpoint
-            fetch('/api/graph')
-                .then(r => r.json())
-                .then(data => initDashboard(data))
-                .catch(err => console.warn('Could not load /api/graph automatically:', err));
+            fieldsBox.style.display = 'none';
         }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', start);
-    } else {
-        start();
+    // Methods
+    const methodsBox = document.getElementById('methods-box');
+    const methodList = document.getElementById('method-list');
+    if (methodsBox && methodList) {
+        if (data.methods && data.methods.length > 0) {
+            methodsBox.style.display = 'block';
+            methodList.innerHTML = data.methods.map(m => `
+                <li><span style="color:#34d399;">${m.returnType}</span> ${m.name}(${(m.parameterTypes || []).join(', ')})</li>
+            `).join('');
+        } else {
+            methodsBox.style.display = 'none';
+        }
     }
-})();
+
+    // Connections (both directions)
+    const connBox = document.getElementById('connections-box');
+    const connList = document.getElementById('connection-list');
+    if (connBox && connList) {
+        const targetNode = cy ? cy.getElementById(data.id) : null;
+        const outEdges = targetNode && targetNode.length > 0 ? targetNode.outgoers('edge') : [];
+        const inEdges = targetNode && targetNode.length > 0 ? targetNode.incomers('edge') : [];
+        if (outEdges.length > 0 || inEdges.length > 0) {
+            connBox.style.display = 'block';
+            let html = '';
+            outEdges.forEach(e => {
+                const other = e.target().data('label') || e.target().id();
+                html += `<li>&#8594; <strong>${e.data('type')}</strong> ${other}</li>`;
+            });
+            inEdges.forEach(e => {
+                const other = e.source().data('label') || e.source().id();
+                html += `<li>&#8592; <strong>${e.data('type')}</strong> ${other}</li>`;
+            });
+            connList.innerHTML = html;
+        } else {
+            connBox.style.display = 'none';
+        }
+    }
+
+    const inspectBtn = document.querySelectorAll('.tab-btn')[0];
+    if (inspectBtn) switchTab('inspect', inspectBtn);
+}
+
+const ARROW_INFO_MAP = {
+    'INJECTS':    { style: 'Solid Indigo line', meaning: 'Dependency injection via Spring @Autowired or constructor' },
+    'EXTENDS':    { style: 'Solid Green line', meaning: 'Class inheritance (extends superclass)' },
+    'IMPLEMENTS': { style: 'Dashed Cyan line', meaning: 'Interface realization (implements interface)' },
+    'CALLS':      { style: 'Dotted Orange line', meaning: 'Method invocation detected in code' },
+    'USES':       { style: 'Solid Gray line', meaning: 'Field reference or general association' }
+};
+
+function showEdgeDetails(data) {
+    const welcome = document.getElementById('welcome-msg');
+    const details = document.getElementById('node-details');
+    const edgeDetails = document.getElementById('edge-details');
+    if (welcome) welcome.style.display = 'none';
+    if (details) details.style.display = 'none';
+    if (edgeDetails) edgeDetails.style.display = 'block';
+
+    const edgeType = (data.type || 'USES').toUpperCase();
+    const info = ARROW_INFO_MAP[edgeType] || ARROW_INFO_MAP['USES'];
+
+    const typeEl = document.getElementById('edge-detail-type');
+    const nameEl = document.getElementById('edge-detail-name');
+    const styleEl = document.getElementById('edge-detail-style');
+    const descEl = document.getElementById('edge-detail-desc');
+
+    if (typeEl) {
+        typeEl.innerText = edgeType;
+        const colorMap = {
+            'INJECTS': '#6366f1',
+            'EXTENDS': '#10b981',
+            'IMPLEMENTS': '#06b6d4',
+            'CALLS': '#f97316',
+            'USES': '#64748b'
+        };
+        const c = colorMap[edgeType] || '#64748b';
+        typeEl.style.borderColor = c;
+        typeEl.style.color = c;
+    }
+
+    if (nameEl) {
+        const src = data.source ? data.source.split('.').pop() : '';
+        const tgt = data.target ? data.target.split('.').pop() : '';
+        nameEl.innerText = `${src} → ${tgt}`;
+    }
+
+    if (styleEl) {
+        styleEl.innerText = `${info.style} • ${info.meaning}`;
+    }
+
+    if (descEl) {
+        descEl.innerText = data.description || `${data.source} ${edgeType.toLowerCase()} ${data.target}`;
+    }
+
+    const inspectBtn = document.querySelectorAll('.tab-btn')[0];
+    if (inspectBtn) switchTab('inspect', inspectBtn);
+}
+
+function hideDetails() {
+    const welcome = document.getElementById('welcome-msg');
+    const details = document.getElementById('node-details');
+    const edgeDetails = document.getElementById('edge-details');
+    if (welcome) welcome.style.display = 'block';
+    if (details) details.style.display = 'none';
+    if (edgeDetails) edgeDetails.style.display = 'none';
+}
+
+let highlightedEdgeType = null;
+
+function highlightEdgeType(type) {
+    if (!cy) return;
+    const normType = (type || '').toUpperCase();
+    if (highlightedEdgeType === normType) {
+        resetHighlight();
+        return;
+    }
+    highlightedEdgeType = normType;
+    document.querySelectorAll('.legend-card').forEach(r => r.classList.remove('active-legend-card'));
+
+    const tabCard = document.getElementById(`tab-legend-card-${normType.toLowerCase()}`);
+    if (tabCard) tabCard.classList.add('active-legend-card');
+
+    const matchingEdges = cy.edges().filter(e => (e.data('type') || '').toUpperCase() === normType);
+    const connectedNodeIds = new Set();
+    matchingEdges.forEach(e => {
+        connectedNodeIds.add(e.source().id());
+        connectedNodeIds.add(e.target().id());
+    });
+
+    cy.edges().forEach(e => {
+        if ((e.data('type') || '').toUpperCase() === normType) {
+            e.style('opacity', 1);
+            e.style('width', 2.8);
+        } else {
+            e.style('opacity', 0.1);
+            e.style('width', 1.5);
+        }
+    });
+
+    cy.nodes().forEach(n => {
+        if (n.data('type') === 'PACKAGE') {
+            n.style('opacity', 0.9);
+        } else if (connectedNodeIds.has(n.id())) {
+            n.style('opacity', 1);
+        } else {
+            n.style('opacity', 0.15);
+        }
+    });
+}
+
+function resetHighlight() {
+    highlightedEdgeType = null;
+    document.querySelectorAll('.legend-card').forEach(r => r.classList.remove('active-legend-card'));
+    if (!cy) return;
+    cy.edges().forEach(e => {
+        const edgeType = (e.data('type') || 'uses').toUpperCase();
+        e.style('opacity', edgeType === 'INJECTS' ? 0.95 : 0.8);
+        e.style('width', edgeType === 'INJECTS' ? 2 : 1.5);
+    });
+    cy.nodes().style('opacity', 1);
+}
+
+function renderLegendComponents(data) {
+    const container = document.getElementById('legendComponentTypes');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const types = Object.keys(COLOR_MAP);
+    types.forEach(type => {
+        const info = COLOR_MAP[type];
+        const chip = document.createElement('div');
+        chip.className = 'legend-comp-chip';
+        chip.innerHTML = `<span class="color-dot" style="background:${info.border};"></span> <span>${type}</span>`;
+        container.appendChild(chip);
+    });
+}
+
+function searchNodes() {
+    const searchInput = document.getElementById('search-input');
+    if (!searchInput || !cy) return;
+    const query = searchInput.value.toLowerCase().trim();
+
+    if (query === '') {
+        cy.nodes().style('opacity', 1);
+        cy.edges().style('opacity', 0.75);
+        return;
+    }
+
+    cy.nodes().forEach(node => {
+        const label = (node.data('label') || '').toLowerCase();
+        const id = (node.data('id') || '').toLowerCase();
+        if (label.includes(query) || id.includes(query)) {
+            node.style('opacity', 1);
+            let parent = node.parent();
+            while (parent && parent.length > 0) {
+                parent.style('opacity', 1);
+                parent = parent.parent();
+            }
+        } else {
+            node.style('opacity', 0.12);
+        }
+    });
+}
+
+function toggleTypeFilter(type, chip) {
+    if (activeTypes.has(type)) {
+        activeTypes.delete(type);
+        if (chip) chip.classList.remove('active');
+    } else {
+        activeTypes.add(type);
+        if (chip) chip.classList.add('active');
+    }
+
+    if (!cy) return;
+    cy.nodes().forEach(node => {
+        const nodeType = node.data('type');
+        if (nodeType === 'PACKAGE' || activeTypes.has(nodeType)) {
+            node.style('display', 'element');
+        } else {
+            node.style('display', 'none');
+        }
+    });
+}
+
+function switchTab(tab, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+
+    if (btn) {
+        btn.classList.add('active');
+    } else {
+        const targetBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.innerText.toLowerCase().includes(tab.toLowerCase()));
+        if (targetBtn) targetBtn.classList.add('active');
+    }
+
+    const targetContent = document.getElementById(`tab-${tab}`);
+    if (targetContent) targetContent.style.display = 'flex';
+}
+
+// Auto-initialize when DOM is ready
+function start() {
+    if (window.SPROUT_DATA) {
+        initDashboard(window.SPROUT_DATA);
+    } else {
+        fetch('/api/graph')
+            .then(r => r.json())
+            .then(data => initDashboard(data))
+            .catch(err => console.warn('Could not load /api/graph automatically:', err));
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+} else {
+    start();
+}

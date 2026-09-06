@@ -4,63 +4,218 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sprout Architecture Visualizer - /*{{PROJECT_NAME}}*/</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Cytoscape & fCoSE layout -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.29.2/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/layout-base/layout-base.js"></script>
+    <script src="https://unpkg.com/cose-base/cose-base.js"></script>
+    <script src="https://unpkg.com/cytoscape-fcose/cytoscape-fcose.js"></script>
+
     <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
+
+    <!-- Header -->
     <header>
-        <div class="logo-group">
-            <div class="logo-icon">🌱</div>
+        <div class="header-title">
+            <span class="logo-icon">🌱</span>
             <div>
-                <div class="title">Sprout Architecture Visualizer</div>
-                <div class="subtitle" id="projectSubtitle">/*{{PROJECT_NAME}}*/ &bull; Generated /*{{TIMESTAMP}}*/</div>
+                <div class="app-title">Sprout Architecture Visualizer</div>
+                <div class="app-subtitle" id="projectSubtitle">/*{{PROJECT_NAME}}*/ &bull; Generated /*{{TIMESTAMP}}*/</div>
             </div>
         </div>
-        <div class="metrics-bar" id="metricsBar">
-            <!-- Populated dynamically via JS -->
+
+        <div class="header-actions">
+            <span id="metric-classes" class="badge">Classes: --</span>
+            <span id="metric-loc" class="badge">LOC: --</span>
+            <span id="node-count" class="badge">Nodes: --</span>
+            <span id="edge-count" class="badge">Edges: --</span>
+            <button onclick="runLayout()" class="btn">Reset Layout</button>
         </div>
     </header>
 
+    <!-- Main Workspace -->
     <div class="main-container">
-        <div class="canvas-container">
-            <canvas id="graphCanvas"></canvas>
-            <div class="controls-overlay">
-                <input type="text" id="searchInput" class="search-box" placeholder="Search components...">
-                <div class="filters-group" id="filtersGroup"></div>
-            </div>
-            <div class="legend">
-                <div class="legend-item"><span class="legend-dot" style="background: var(--color-controller)"></span> Controller</div>
-                <div class="legend-item"><span class="legend-dot" style="background: var(--color-service)"></span> Service</div>
-                <div class="legend-item"><span class="legend-dot" style="background: var(--color-repo)"></span> Repository</div>
-                <div class="legend-item"><span class="legend-dot" style="background: var(--color-config)"></span> Config</div>
-                <div class="legend-item"><span class="legend-dot" style="background: var(--color-interface)"></span> Interface</div>
-                <div class="legend-item"><span class="legend-dot" style="background: var(--color-model)"></span> Model</div>
-            </div>
-        </div>
-        <div class="sidebar" id="detailsSidebar">
+        <!-- Sidebar -->
+        <aside>
             <div class="sidebar-section">
-                <h3 id="selectedName">Select a Component</h3>
-                <div id="selectedFqcn" style="font-size: 11px; color: #8b949e;">Click any node in the graph to inspect its architectural details.</div>
+                <input type="text" id="search-input" oninput="searchNodes()" placeholder="Search components, packages..." class="search-box">
             </div>
-            <div class="sidebar-section" id="selectedMeta" style="display: none;">
-                <div id="selectedTags"></div>
-                <div class="list-item" id="selectedLoc"></div>
-                <div class="list-item" id="selectedFile"></div>
+
+            <div class="tab-bar">
+                <button class="tab-btn active" onclick="switchTab('inspect', this)">Inspector</button>
+                <button class="tab-btn" onclick="switchTab('filters', this)">Filters</button>
+                <button class="tab-btn" onclick="switchTab('legend', this)">Legend</button>
             </div>
-            <div class="sidebar-section" id="selectedInjections" style="display: none;">
-                <h3>Injected Dependencies</h3>
-                <div id="injectionsList"></div>
+
+            <!-- Tab: Inspector -->
+            <div id="tab-inspect" class="tab-content">
+                <div id="welcome-msg" class="detail-card">
+                    <h4 style="font-size: 13px; margin-bottom: 8px; color: var(--accent);">Interactive Architecture Graph</h4>
+                    <p style="font-size: 11px; color: var(--text-muted); line-height: 1.5;">
+                        Click on any node in the canvas to inspect its fields, methods, and connections. Click on any arrow to inspect relationship details.
+                    </p>
+                </div>
+
+                <div id="node-details" class="detail-card" style="display: none;">
+                    <span id="detail-type" class="tag">SERVICE</span>
+                    <div id="detail-name" class="detail-name">UserService</div>
+                    <div id="detail-pkg" class="detail-sub">com.example.service</div>
+
+                    <div id="fields-box" style="margin-top: 10px; display: none;">
+                        <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px;">Fields</span>
+                        <ul id="field-list" class="list-box"></ul>
+                    </div>
+
+                    <div id="methods-box" style="margin-top: 10px; display: none;">
+                        <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px;">Methods</span>
+                        <ul id="method-list" class="list-box"></ul>
+                    </div>
+
+                    <div id="connections-box" style="margin-top: 10px; display: none;">
+                        <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px;">Connections</span>
+                        <ul id="connection-list" class="list-box"></ul>
+                    </div>
+                </div>
+
+                <!-- Edge Details Inspector -->
+                <div id="edge-details" class="detail-card" style="display: none;">
+                    <span id="edge-detail-type" class="tag">IMPLEMENTS</span>
+                    <div id="edge-detail-name" class="detail-name">Source &rarr; Target</div>
+                    <div id="edge-detail-style" class="detail-sub">Dashed Cyan line &bull; Interface Realization</div>
+
+                    <div style="margin-top: 10px;">
+                        <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 4px;">Description</span>
+                        <div id="edge-detail-desc" class="desc-box">implements TargetInterface</div>
+                    </div>
+                </div>
             </div>
-            <div class="sidebar-section" id="selectedEdges" style="display: none;">
-                <h3>Connections</h3>
-                <div id="connectionsList"></div>
+
+            <!-- Tab: Filters -->
+            <div id="tab-filters" class="tab-content" style="display: none;">
+                <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 8px;">Filter by Component Type</span>
+                <div id="filtersGroup" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
             </div>
-            <div class="sidebar-section" id="selectedMethods" style="display: none;">
-                <h3>Declared Methods</h3>
-                <div id="methodsList"></div>
+
+            <!-- Tab: Legend -->
+            <div id="tab-legend" class="tab-content" style="display: none;">
+                <div class="legend-sidebar-section">
+                    <h4 class="legend-section-title">Arrow &amp; Relationship Types</h4>
+                    <div class="legend-cards-list">
+                        <!-- INJECTS -->
+                        <div id="tab-legend-card-injects" class="legend-card" onclick="highlightEdgeType('INJECTS')">
+                            <div class="legend-card-header">
+                                <svg class="legend-svg" viewBox="0 0 38 12">
+                                    <defs>
+                                        <marker id="tab-m-inj" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                                            <polygon points="0 0, 6 3, 0 6" fill="#6366f1" />
+                                        </marker>
+                                    </defs>
+                                    <line x1="2" y1="6" x2="30" y2="6" stroke="#6366f1" stroke-width="2.2" marker-end="url(#tab-m-inj)" />
+                                </svg>
+                                <span class="legend-card-tag" style="background: rgba(99, 102, 241, 0.2); border-color: #6366f1; color: #a5b4fc;">INJECTS</span>
+                                <span class="legend-stroke-badge badge-solid">Solid</span>
+                            </div>
+                            <p class="legend-card-text">
+                                <strong>Dependency Injection</strong> &bull; Component injected via Spring <code>@Autowired</code>, <code>@Inject</code>, or constructor injection (e.g. <code>@RequiredArgsConstructor</code>).
+                            </p>
+                        </div>
+
+                        <!-- EXTENDS -->
+                        <div id="tab-legend-card-extends" class="legend-card" onclick="highlightEdgeType('EXTENDS')">
+                            <div class="legend-card-header">
+                                <svg class="legend-svg" viewBox="0 0 38 12">
+                                    <defs>
+                                        <marker id="tab-m-ext" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                                            <polygon points="0 0.5, 6 3.5, 0 6.5" fill="none" stroke="#10b981" stroke-width="1.2" />
+                                        </marker>
+                                    </defs>
+                                    <line x1="2" y1="6" x2="29" y2="6" stroke="#10b981" stroke-width="1.8" marker-end="url(#tab-m-ext)" />
+                                </svg>
+                                <span class="legend-card-tag" style="background: rgba(16, 185, 129, 0.2); border-color: #10b981; color: #6ee7b7;">EXTENDS</span>
+                                <span class="legend-stroke-badge badge-solid">Solid</span>
+                            </div>
+                            <p class="legend-card-text">
+                                <strong>Class Inheritance</strong> &bull; Subclassing a parent class (<code>class Child extends Parent</code>). Uses UML generalization arrowhead.
+                            </p>
+                        </div>
+
+                        <!-- IMPLEMENTS -->
+                        <div id="tab-legend-card-implements" class="legend-card" onclick="highlightEdgeType('IMPLEMENTS')">
+                            <div class="legend-card-header">
+                                <svg class="legend-svg" viewBox="0 0 38 12">
+                                    <defs>
+                                        <marker id="tab-m-imp" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+                                            <polygon points="0 0.5, 6 3.5, 0 6.5" fill="none" stroke="#06b6d4" stroke-width="1.2" />
+                                        </marker>
+                                    </defs>
+                                    <line x1="2" y1="6" x2="29" y2="6" stroke="#06b6d4" stroke-width="1.8" stroke-dasharray="4,3" marker-end="url(#tab-m-imp)" />
+                                </svg>
+                                <span class="legend-card-tag" style="background: rgba(6, 182, 212, 0.2); border-color: #06b6d4; color: #67e8f9;">IMPLEMENTS</span>
+                                <span class="legend-stroke-badge badge-dashed">Dashed</span>
+                            </div>
+                            <p class="legend-card-text">
+                                <strong>Interface Realization</strong> &bull; Class implements an interface contract (<code>class Impl implements Service</code>). Uses UML realization dashed arrow.
+                            </p>
+                        </div>
+
+                        <!-- CALLS -->
+                        <div id="tab-legend-card-calls" class="legend-card" onclick="highlightEdgeType('CALLS')">
+                            <div class="legend-card-header">
+                                <svg class="legend-svg" viewBox="0 0 38 12">
+                                    <defs>
+                                        <marker id="tab-m-calls" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                                            <polygon points="0 0, 6 3, 0 6" fill="#f97316" />
+                                        </marker>
+                                    </defs>
+                                    <line x1="2" y1="6" x2="30" y2="6" stroke="#f97316" stroke-width="1.8" stroke-dasharray="2,3" marker-end="url(#tab-m-calls)" />
+                                </svg>
+                                <span class="legend-card-tag" style="background: rgba(249, 115, 22, 0.2); border-color: #f97316; color: #fdba74;">CALLS</span>
+                                <span class="legend-stroke-badge badge-dotted">Dotted</span>
+                            </div>
+                            <p class="legend-card-text">
+                                <strong>Method Invocation</strong> &bull; Direct method call detected in code body (e.g. <code>target.executeAction()</code>).
+                            </p>
+                        </div>
+
+                        <!-- USES -->
+                        <div id="tab-legend-card-uses" class="legend-card" onclick="highlightEdgeType('USES')">
+                            <div class="legend-card-header">
+                                <svg class="legend-svg" viewBox="0 0 38 12">
+                                    <defs>
+                                        <marker id="tab-m-uses" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                                            <polygon points="0 0, 6 3, 0 6" fill="#94a3b8" />
+                                        </marker>
+                                    </defs>
+                                    <line x1="2" y1="6" x2="30" y2="6" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#tab-m-uses)" />
+                                </svg>
+                                <span class="legend-card-tag" style="background: rgba(100, 116, 139, 0.2); border-color: #64748b; color: #cbd5e1;">USES</span>
+                                <span class="legend-stroke-badge badge-solid">Solid</span>
+                            </div>
+                            <p class="legend-card-text">
+                                <strong>Field Usage</strong> &bull; General association or non-injected field reference.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="legend-sidebar-section" style="margin-top: 14px;">
+                    <h4 class="legend-section-title">Component Types</h4>
+                    <div id="legendComponentTypes" class="legend-components-grid"></div>
+                </div>
             </div>
-        </div>
+        </aside>
+
+        <!-- Canvas -->
+        <main id="cy"></main>
     </div>
 
+    <!-- Embedded Architecture Graph Data -->
     <script>
         window.SPROUT_DATA = /*{{SPROUT_DATA}}*/null;
     </script>

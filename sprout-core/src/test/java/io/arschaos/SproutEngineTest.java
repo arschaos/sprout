@@ -108,11 +108,24 @@ class SproutEngineTest {
         assertThat(jsFile).exists();
 
         String htmlContent = Files.readString(htmlFile.toPath(), StandardCharsets.UTF_8);
-        assertThat(htmlContent).contains("Sprout Architecture Visualizer", "OrderController", "dashboard.css", "dashboard.js");
+        assertThat(htmlContent).contains(
+                "Sprout Architecture Visualizer",
+                "OrderController",
+                "dashboard.css",
+                "dashboard.js",
+                "tab-legend",
+                "edge-details",
+                "INJECTS",
+                "IMPLEMENTS",
+                "CALLS",
+                "EXTENDS",
+                "USES"
+        );
+        assertThat(htmlContent).doesNotContain("canvas-legend");
         String cssContent = Files.readString(cssFile.toPath(), StandardCharsets.UTF_8);
-        assertThat(cssContent).contains("--bg-color", "canvas");
+        assertThat(cssContent).contains("--bg-color", "canvas", "legend-card", "legend-svg");
         String jsContent = Files.readString(jsFile.toPath(), StandardCharsets.UTF_8);
-        assertThat(jsContent).contains("initDashboard", "COLOR_MAP");
+        assertThat(jsContent).contains("initDashboard", "COLOR_MAP", "showEdgeDetails", "highlightEdgeType");
 
         // Test Summary render
         String summary = engine.formatSummary(graph);

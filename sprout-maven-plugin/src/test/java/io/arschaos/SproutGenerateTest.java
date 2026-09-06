@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,27 +24,28 @@ class SproutGenerateTest {
         Files.createDirectories(src);
 
         Files.writeString(src.resolve("AppService.java"),
-                "package com.test;\n" +
-                "import org.springframework.stereotype.Service;\n" +
-                "@Service\n" +
-                "public class AppService {}\n");
+            "package com.test;\n" +
+            "import org.springframework.stereotype.Service;\n" +
+            "@Service\n" +
+            "public class AppService {}\n");
 
         Files.writeString(src.resolve("AppController.java"),
-                "package com.test;\n" +
-                "import org.springframework.web.bind.annotation.RestController;\n" +
-                "import lombok.RequiredArgsConstructor;\n" +
-                "@RestController\n" +
-                "@RequiredArgsConstructor\n" +
-                "public class AppController {\n" +
-                "    private final AppService service;\n" +
-                "}\n");
+            "package com.test;\n" +
+            "import org.springframework.web.bind.annotation.RestController;\n" +
+            "import lombok.RequiredArgsConstructor;\n" +
+            "@RestController\n" +
+            "@RequiredArgsConstructor\n" +
+            "public class AppController {\n" +
+            "    private final AppService service;\n" +
+            "}\n");
 
         File outDir = tempDir.resolve("target/sprout").toFile();
 
         SproutGenerate mojo = new SproutGenerate();
-        mojo.setTestBaseDir(tempDir.toFile());
-        mojo.setOutputDir(outDir);
-        mojo.setLaunchApp(false);
+        mojo.testBaseDir = tempDir.toFile();
+        mojo.outputDirectory = tempDir.resolve("target/sprout").toFile();
+        mojo.formats = List.of("HTML", "JSON", "MERMAID");
+        mojo.launchApp = false;
 
         mojo.execute();
 
