@@ -17,9 +17,23 @@
 
     <dependencies>
         <dependency>
+            <groupId>io.arschaos</groupId>
+            <artifactId>sprout-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.arschaos</groupId>
+            <artifactId>sprout-web</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.apache.maven</groupId>
             <artifactId>maven-plugin-api</artifactId>
             <version>3.9.16</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-core</artifactId>
+            <version>${maven.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -28,6 +42,20 @@
             <version>3.15.2</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     
     <build>
@@ -35,6 +63,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-plugin-plugin</artifactId>
+                <version>${maven-plugin-tools.version}</version>
                 <executions>
                     <execution>
                         <id>help-mojo</id>
