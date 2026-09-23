@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>io.arschaos</groupId>
+        <groupId>com.arschaos</groupId>
         <artifactId>sprout-parent</artifactId>
         <version>0.1.0</version>
     </parent>
@@ -17,11 +17,11 @@
 
     <dependencies>
         <dependency>
-            <groupId>io.arschaos</groupId>
+            <groupId>com.arschaos</groupId>
             <artifactId>sprout-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.arschaos</groupId>
+            <groupId>com.arschaos</groupId>
             <artifactId>sprout-web</artifactId>
         </dependency>
         <dependency>
