@@ -16,7 +16,7 @@ jobs:
       # necessary to push commits and tags
       contents: write
 
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
